@@ -20,13 +20,15 @@
 %RTN        { JMP2r } 
 %MOD { DIVk MUL SUB }
 %MOD2 { DIV2k MUL2 SUB2 }
-%PLAY-NOTE { ;pitches LDA .Audio0/pitch DEO }
+( play note and increment through the notes array )
+%PLAY-NOTE { ;pitches #00 ;count/n LDA ADD2 LDA .Audio0/pitch DEO ;count/n LDA INC ;pitch-length LDA MOD ;count/n STA }
 
 %IS-UC { DUP #40 > SWP #5b < AND }
 %IS-LC { DUP #60 > SWP #7b < AND }
 %IS-NUM { DUP #2f > SWP #3a < AND }
 %16STEP { ;count/c LDA2 ;tempo LDA2 #0020 DIV2 DIV2 #0010 MOD2 NIP }
 %32STEP { ;count/c LDA2 ;tempo LDA2 #0020 DIV2 DIV2 NIP }
+%PRINT-RHYTHM { ;rhythms LDA2 DEBUG2 ;rhythms #0002 ADD2 LDA2 DEBUG2 }
 	
 	( devices )
 	|00 @System     [ &vector $2 &wst      $1 &rst    $1 &pad   $4 &r      $2 &g      $2 &b    $2 &debug  $1 &halt $1 ]
@@ -47,9 +49,9 @@
 	
 
 	( ;my-string ;print-str JSR2 )
-		#7ff6 .System/r DEO2 
-		#336f .System/g DEO2 
-		#a03f .System/b DEO2
+		#0f0f .System/r DEO2 
+		#0ff0 .System/g DEO2 
+		#00ff .System/b DEO2
 		( seed prng (must be nonzero) )
 		#00 .DateTime/second DEI
 		#00 .DateTime/minute DEI #60 SFT2 EOR2
@@ -66,25 +68,51 @@
 		;on-stdin .Console/vector DEO2
 		;violin-pcm .Audio0/addr DEO2 ( set sample address )
 		#0080 .Audio0/length DEO2 ( set sample length )
-		#0040 .Audio0/adsr DEO2 ( set envelope )
+		#0042 .Audio0/adsr DEO2 ( set envelope )
 		#ff .Audio0/volume DEO ( set maximum volume )
-		;random-wave-table JMP2
-		
+		;random-wave-table JSR2
+		;load-theme JSR2
+
 	BRK
 
-
+@load-theme ( -- )
+	    ;theme/name .File/name DEO2 ( set address of file path )
+	    #0006 .File/length DEO2 ( will attempt to read 6 bytes )
+	
+	    ( set address for the data to read, and do read )
+	    ;theme/data .File/read DEO2 
+	
+	    ( check the success byte and jump accordingly )
+	    .File/success DEI2 #0006 NEQ2 ,&failed JCN 
+	
+	    &success
+	        ( set the system colors from the read data )
+	        ;theme/r LDA2 .System/r DEO2
+	        ;theme/g LDA2 .System/g DEO2
+	        ;theme/b LDA2 .System/b DEO2
+	    RTN
+	
+	    &failed
+	RTN
+	
+	@theme 
+	    &name ".theme 00
+	    &data ( reserving 6 bytes for the data: )
+	    &r $2 &g $2 &b $2
 
 
 @random-wave-table
 	#80 #00
 @loop-noise
-	DUP ;noise ROT #00 SWP ADD2 ;prng JSR2 DUP2 DEBUG2 SWP2 STA2
+	DUP ;noise ROT #00 SWP ADD2 ;prng JSR2 
+	( DUP2 DEBUG2  )
+	SWP2 STA2
 	INC GTHk ,loop-noise JCN
 POP2
 
 @on-note-end
 	#3c .Audio0/pitch DEO
-BRK
+RTN
 
 @my-string "Hello 20 "World! 0a00
 
@@ -103,45 +131,68 @@ BRK
 
 
 @language ( -> )
-
-  ;text-input LDA 
+  ;text-input LDA
 	DUP LIT "n EQU ;pitch JCN2
   DUP LIT "r EQU ;rhythm JCN2
   DUP LIT "f EQU ;shiftadd JCN2
   DUP LIT "i EQU ;set-instrument JCN2
+  DUP LIT "t EQU ;set-tempo JCN2
+  DUP LIT "s EQU ;toggle-vis JCN2
   BRK
 
+@toggle-vis
+	POP ;console-vis LDA ,&toggle JCN
+		#01 ;console-vis STA 
+		BRK
+	&toggle
+	#00 ;console-vis STA
+BRK
+
+@set-tempo
+	POP ;text-input #0002 ADD2 LDA2 SWP ;check-ascii-range JSR2 #10 MUL SWP ;check-ascii-range JSR2 ADD ;tempo #0001 ADD2 STA
+	
+BRK
 @shiftadd
-	;rhythms LDA2 DUP2 #01 SFT2 ADD2 ;rhythms STA2
+	POP ;rhythms LDA2 DUP2 #01 SFT2 ADD2 ;rhythms STA2
 	;rhythms #0002 ADD2 LDA2 DUP2 #01 SFT2 ADD2 ;rhythms #0002 ADD2 STA2
 BRK
 @pitch
-	;text-input #0002 ADD2 LDA2 SWP #30 SUB #0a MUL SWP #30 SUB ADD ;pitches STA
+( n 60 40 32 34: )
+	#00 ;pitch-length STA
+	POP ;text-input #0002 ADD2 
+	( DUP2 DEBUG2 )
+	@more-pitches 
+	DUP2 LDA2
+	SWP #30 SUB #0a MUL SWP #30 SUB ADD
+	;pitches #00 ;pitch-length LDA ADD2 STA
+	;pitch-length LDA INC ;pitch-length STA 
+	#0003 ADD2 DUP2 #0001 SUB2 LDA 
+	LIT "] NEQ ,more-pitches JCN
+	PRINT-RHYTHM
+	POP2
+	;pitch-length LDA #00
+	( @print-notes
+		DUP #00 SWP ;pitches ADD2 LDA DEBUG
+		INC GTHk ,print-notes JCN
+	POP2	 )
 BRK
 @rhythm
-	#0008 #0000 
+	POP #0008 #0000 
 	@loop-rhythm-ascii
 	DUP2
-	;text-input SWP2 #0002 ADD2 ADD2 LDA DUP 
-		IS-NUM ,&num JCN 
-		DUP IS-LC ,&lc JCN
-		DUP IS-UC ,&uc JCN
-		&num
-			#30 SUB
-		,&continue JMP
-		&lc
-			#57 SUB
-		,&continue JMP
-		&uc
-			#37 SUB
-		&continue
+	( c i 30 )
+	;text-input SWP2 #0002 ADD2 ADD2 LDA 
+		;check-ascii-range JSR2
 		( #0008 #Iter 00#Val #Iter #Iter #0002 MOD2 #0000 EQU2 )
 			#00 SWP OVR2 DUP2 #0002 MOD2 #0001 EQU2 ,&snib JCN
 				#0002 DIV2 ;rhythms ADD2 SWP2 #0010 MUL2 SWP2 STA POP ,&end JMP
 			&snib
 				#0002 DIV2 ;rhythms ADD2 STH2k LDA ADD STH2r STA POP ,&end JMP
 			&end
-			INC2 GTH2k ,loop-rhythm-ascii JCN
+			INC2 GTH2k ;loop-rhythm-ascii JCN2
+			( remove interator & count )
+			POP2 POP2
+
 BRK
 
 @set-instrument
@@ -169,6 +220,7 @@ BRK
 
   ( check for step )
   ( 32STEP DEBUG )
+	( i t / #0020 )
   ;count/c LDA2 ;tempo LDA2 #0020 DIV2 MOD2 #0000 NEQ2 ,&no-beat JCN
 	
   ( check for first 16 )
@@ -177,14 +229,23 @@ BRK
   ( check for second 16 )
   ;count/c LDA2 ;tempo LDA2 MOD2 ;tempo LDA2 LTH2 ,&s16 JCN
   &no-beat
+	;console-vis LDA ,&no-vis1 JCN 
+	LIT ". #18 DEO
+	&no-vis1
   BRK
   &s16
 
   ;rhythms #0002 ADD2 LDA2 ;bit-check LDA2 16STEP SFT2 AND2 #0000 NEQ2 ,&play-note JCN
+	;console-vis LDA ,&no-vis2 JCN 
+	LIT "! #18 DEO
+	&no-vis2
   BRK
   &f16
 	
   ;rhythms LDA2 ;bit-check LDA2 16STEP SFT2 AND2 #0000 NEQ2 ,&play-note JCN
+	;console-vis LDA ,&no-vis3 JCN 
+	LIT "! #18 DEO
+	&no-vis3
   BRK
 	
   &beat-to-check
@@ -194,6 +255,9 @@ BRK
     ,&play-note JCN )
   BRK
   &play-note 
+		;console-vis LDA ,&no-vis4 JCN 
+		LIT "[ LIT "X #18 DEO2 LIT "] #0a #18 DEO2
+		&no-vis4
     PLAY-NOTE
 BRK
 
@@ -269,9 +333,44 @@ RTN
 	&x $2
 	&y $2
 
-@end-memory
+@check-ascii-range
+	DUP IS-NUM ,&num JCN 
+	DUP IS-LC ,&lc JCN
+	DUP IS-UC ,&uc JCN
+	&num
+		#30 SUB
+	,&continue JMP
+	&lc
+		#57 SUB
+	,&continue JMP
+	&uc
+		#37 SUB
+	&continue
+	RTN
 
-@noise $256
+
+@draw-str ( str* color -- )
+
+	STH
+	&while
+		LDAk STHkr ,draw-char JSR
+		INC2 LDAk ,&while JCN
+	POP2
+	POPr
+
+JMP2r
+
+@draw-char ( char color -- )
+
+	SWP
+	[ #20 - #00 SWP #40 SFT2 ;font ++ ] .Screen/addr DEO2
+	.Screen/sprite DEOk DEO
+	.Screen/y DEI2 #0010 -- .Screen/y DEO2
+	.Screen/x DEI2 #0008 ++ .Screen/x DEO2
+
+JMP2r
+
+@noise $100
 
 @piano-pcm
 	8182 8588 8d91 959b a1a6 aaad b2b5 b8bd
@@ -292,7 +391,7 @@ RTN
 	4a50 575b 6064 686a 6e70 7274 7677 7a7d
 
 @violin-pcm
-	8186 8d94 9ba0 a3a7 acb1 b5bc c2c7 cacc
+	8681 8d94 9ba0 a3a7 acb1 b5bc c2c7 cacc
 	cecf d0d1 d3d5 d8db dee1 e3e5 e6e5 e5e3
 	dfdc d7d0 c8c2 bbb2 a99f 968c 847c 746e
 	675f 5851 4b43 3e3a 3533 312e 2c2b 2826
@@ -363,15 +462,113 @@ RTN
 	6867 6969 6a6c 6c6d 6d6e 706f 7071 7174
 	7475 7576 7777 797a 7a7c 7b7c 7e7d 7f7f
 
-@count [ &i 0000 &c 0000 &r 0000 ] 
+@console-vis 01
+@count [ &i 0000 &c 0000 &r 0000 &n 0000 ] 
 @note [ &val 3c30 3235 ]
 @tempo 00c0
 @bit-check 8000
 @beat-check 00
 
-@rhythms 8000 0000
-@pitch-length 00
-@pitches $40
+@pitch-length 01
+@pitches 0000 0000 0000 0000 0000 0000 0000 0000
+@rhythms 8000 0000 0000 0000 0000 0000 0000 0000
+
+@font ( terminus01x02 )
+	0000 0000 0000 0000 0000 0000 0000 0000
+	0000 183c 3c3c 1818 1800 1818 0000 0000
+	0066 6666 2400 0000 0000 0000 0000 0000
+	0000 006c 6cfe 6c6c 6cfe 6c6c 0000 0000
+	1818 7cc6 c2c0 7c06 0686 c67c 1818 0000
+	0000 0000 c2c6 0c18 3060 c686 0000 0000
+	0000 386c 6c38 76dc cccc cc76 0000 0000
+	0030 3030 6000 0000 0000 0000 0000 0000
+	0000 0c18 3030 3030 3030 180c 0000 0000
+	0000 3018 0c0c 0c0c 0c0c 1830 0000 0000
+	0000 0000 0066 3cff 3c66 0000 0000 0000
+	0000 0000 0018 187e 1818 0000 0000 0000
+	0000 0000 0000 0000 0018 1818 3000 0000
+	0000 0000 0000 00fe 0000 0000 0000 0000
+	0000 0000 0000 0000 0000 1818 0000 0000
+	0000 0000 0206 0c18 3060 c080 0000 0000
+	0000 386c c6c6 d6d6 c6c6 6c38 0000 0000
+	0000 1838 7818 1818 1818 187e 0000 0000
+	0000 7cc6 060c 1830 60c0 c6fe 0000 0000
+	0000 7cc6 0606 3c06 0606 c67c 0000 0000
+	0000 0c1c 3c6c ccfe 0c0c 0c1e 0000 0000
+	0000 fec0 c0c0 fc06 0606 c67c 0000 0000
+	0000 3860 c0c0 fcc6 c6c6 c67c 0000 0000
+	0000 fec6 0606 0c18 3030 3030 0000 0000
+	0000 7cc6 c6c6 7cc6 c6c6 c67c 0000 0000
+	0000 7cc6 c6c6 7e06 0606 0c78 0000 0000
+	0000 0000 1818 0000 0018 1800 0000 0000
+	0000 0000 1818 0000 0018 1830 0000 0000
+	0000 0006 0c18 3060 3018 0c06 0000 0000
+	0000 0000 007e 0000 7e00 0000 0000 0000
+	0000 0060 3018 0c06 0c18 3060 0000 0000
+	0000 7cc6 c60c 1818 1800 1818 0000 0000
+	0000 007c c6c6 dede dedc c07c 0000 0000
+	0000 1038 6cc6 c6fe c6c6 c6c6 0000 0000
+	0000 fc66 6666 7c66 6666 66fc 0000 0000
+	0000 3c66 c2c0 c0c0 c0c2 663c 0000 0000
+	0000 f86c 6666 6666 6666 6cf8 0000 0000
+	0000 fe66 6268 7868 6062 66fe 0000 0000
+	0000 fe66 6268 7868 6060 60f0 0000 0000
+	0000 3c66 c2c0 c0de c6c6 663a 0000 0000
+	0000 c6c6 c6c6 fec6 c6c6 c6c6 0000 0000
+	0000 3c18 1818 1818 1818 183c 0000 0000
+	0000 1e0c 0c0c 0c0c cccc cc78 0000 0000
+	0000 e666 666c 7878 6c66 66e6 0000 0000
+	0000 f060 6060 6060 6062 66fe 0000 0000
+	0000 c6ee fefe d6c6 c6c6 c6c6 0000 0000
+	0000 c6e6 f6fe dece c6c6 c6c6 0000 0000
+	0000 7cc6 c6c6 c6c6 c6c6 c67c 0000 0000
+	0000 fc66 6666 7c60 6060 60f0 0000 0000
+	0000 7cc6 c6c6 c6c6 c6d6 de7c 0c0e 0000
+	0000 fc66 6666 7c6c 6666 66e6 0000 0000
+	0000 7cc6 c660 380c 06c6 c67c 0000 0000
+	0000 7e7e 5a18 1818 1818 183c 0000 0000
+	0000 c6c6 c6c6 c6c6 c6c6 c67c 0000 0000
+	0000 c6c6 c6c6 c6c6 c66c 3810 0000 0000
+	0000 c6c6 c6c6 d6d6 d6fe ee6c 0000 0000
+	0000 c6c6 6c7c 3838 7c6c c6c6 0000 0000
+	0000 6666 6666 3c18 1818 183c 0000 0000
+	0000 fec6 860c 1830 60c2 c6fe 0000 0000
+	0000 3c30 3030 3030 3030 303c 0000 0000
+	0000 0080 c0e0 7038 1c0e 0602 0000 0000
+	0000 3c0c 0c0c 0c0c 0c0c 0c3c 0000 0000
+	1038 6cc6 0000 0000 0000 0000 0000 0000
+	0000 0000 0000 0000 0000 0000 00ff 0000
+	3030 1800 0000 0000 0000 0000 0000 0000
+	0000 0000 0078 0c7c cccc cc76 0000 0000
+	0000 e060 6078 6c66 6666 667c 0000 0000
+	0000 0000 007c c6c0 c0c0 c67c 0000 0000
+	0000 1c0c 0c3c 6ccc cccc cc76 0000 0000
+	0000 0000 007c c6fe c0c0 c67c 0000 0000
+	0000 386c 6460 f060 6060 60f0 0000 0000
+	0000 0000 0076 cccc cccc cc7c 0ccc 7800
+	0000 e060 606c 7666 6666 66e6 0000 0000
+	0000 1818 0038 1818 1818 183c 0000 0000
+	0000 0606 000e 0606 0606 0606 6666 3c00
+	0000 e060 6066 6c78 786c 66e6 0000 0000
+	0000 3818 1818 1818 1818 183c 0000 0000
+	0000 0000 00ec fed6 d6d6 d6c6 0000 0000
+	0000 0000 00dc 6666 6666 6666 0000 0000
+	0000 0000 007c c6c6 c6c6 c67c 0000 0000
+	0000 0000 00dc 6666 6666 667c 6060 f000
+	0000 0000 0076 cccc cccc cc7c 0c0c 1e00
+	0000 0000 00dc 7666 6060 60f0 0000 0000
+	0000 0000 007c c660 380c c67c 0000 0000
+	0000 1030 30fc 3030 3030 361c 0000 0000
+	0000 0000 00cc cccc cccc cc76 0000 0000
+	0000 0000 0066 6666 6666 3c18 0000 0000
+	0000 0000 00c6 c6d6 d6d6 fe6c 0000 0000
+	0000 0000 00c6 6c38 3838 6cc6 0000 0000
+	0000 0000 00c6 c6c6 c6c6 c67e 060c f800
+	0000 0000 00fe cc18 3060 c6fe 0000 0000
+	0000 0e18 1818 7018 1818 180e 0000 0000
+	0000 1818 1818 0018 1818 1818 0000 0000
+	0000 7018 1818 0e18 1818 1870 0000 0000
+
+@end-memory
 
 @text-input 
-BRK
