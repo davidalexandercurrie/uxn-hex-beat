@@ -9,7 +9,12 @@ Pitch
 `n[60 50 40 30]` // midi note value 60 = middle c
 
 Instrument
-`i 3` // 0-6 are different waveforms. 6 is set to a random memory address in the program... often quite noisey!
+`i 3` // 0-8 are different waveforms. 6 is set to a random memory address in the program... often quite noisey! 8 is a kick drum sample
 
 Bit shift the rhythm
 `f` will shift the rhythm and then add it on top of the original. Generally adds more notes
+
+`s` toggles console visualizer
+
+Tempo
+`t 80` sets the number of frames per cycle. Defaults to 0xc0 (192 in Decimal)
