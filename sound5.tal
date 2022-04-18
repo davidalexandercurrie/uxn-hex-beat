@@ -53,6 +53,10 @@
 		#0f0f .System/r DEO2 
 		#0ff0 .System/g DEO2 
 		#00ff .System/b DEO2
+
+    #0100 .Screen/width DEO2
+    #00c0 .Screen/height DEO2
+
 		( seed prng (must be nonzero) )
 		#00 .DateTime/second DEI
 		#00 .DateTime/minute DEI #60 SFT2 EOR2
@@ -70,10 +74,11 @@
 		;on-button .Controller/vector DEO2
 		;sin-pcm .Audio0/addr DEO2 ( set sample address )
 		#0100 .Audio0/length DEO2 ( set sample length )
-		#00ff .Audio0/adsr DEO2 ( set envelope )
+		#0052 .Audio0/adsr DEO2 ( set envelope )
 		#ff .Audio0/volume DEO ( set maximum volume )
 		;random-wave-table JSR2
 		;load-theme JSR2
+    
 
 		#0018 .Screen/x DEO2
 		#0018 .Screen/y DEO2
@@ -362,9 +367,9 @@ BRK
 		
 		SWP2r
 		#00 .Screen/auto DEO
-		#0100 .Screen/y DEO2
+		#0028 .Screen/y DEO2
 		.Screen/x DEI2
-		#0040 #000c #00 16STEP STH2r NIP ,&no-add16 JCN
+		#000f #0007 #00 16STEP STH2r NIP ,&no-add16 JCN
 		#10 ADD
 		&no-add16
 		
