@@ -1,0 +1,707 @@
+( hello-sound.tal )
+
+%+  { ADD }  %-  { SUB }  %*  { MUL }  %/  { DIV }
+%<  { LTH }  %>  { GTH }  %=  { EQU }  %!  { NEQ }
+%++ { ADD2 } %-- { SUB2 } %** { MUL2 } %// { DIV2 }
+%<< { LTH2 } %>> { GTH2 } %== { EQU2 } %!! { NEQ2 }
+
+%2*  { #10 SFT } %2/  { #01 SFT } %2**  { #10 SFT2 } %2//  { #01 SFT2 }
+%4*  { #20 SFT } %4/  { #02 SFT } %4**  { #20 SFT2 } %4//  { #02 SFT2 }
+%8*  { #30 SFT } %8/  { #03 SFT } %8**  { #30 SFT2 } %8//  { #03 SFT2 }
+%10* { #40 SFT } %10/ { #04 SFT } %10** { #40 SFT2 } %10// { #04 SFT2 }
+%20* { #50 SFT } %20/ { #05 SFT } %20** { #50 SFT2 } %20// { #05 SFT2 }
+
+%2MOD  { #01 AND } %2MOD2  { #0001 AND2 }
+%4MOD  { #03 AND } %4MOD2  { #0003 AND2 }
+%8MOD  { #07 AND } %8MOD2  { #0007 AND2 }
+%10MOD { #0f AND } %10MOD2 { #000f AND2 }
+%DEBUG      { ;print-hex/byte JSR2 #0a18 DEO }
+%DEBUG2     { ;print-hex JSR2 #0a18 DEO }
+%RTN        { JMP2r } 
+%MOD { DIVk MUL SUB }
+%MOD2 { DIV2k MUL2 SUB2 }
+( play note and increment through the notes array )
+%PLAY-NOTE { ;pitches #00 ;count/n LDA ADD2 LDA ;repeat-sample LDA ADD .Audio0/pitch DEO ;count/n LDA INC ;pitch-length LDA MOD ;count/n STA }
+
+%IS-UC { DUP #40 > SWP #5b < AND }
+%IS-LC { DUP #60 > SWP #7b < AND }
+%IS-NUM { DUP #2f > SWP #3a < AND }
+%16STEP { ;count/c LDA2 ;tempo LDA2 #0020 DIV2 DIV2 #0010 MOD2 NIP }
+%32STEP { ;count/c LDA2 ;tempo LDA2 #0020 DIV2 DIV2 NIP }
+%STEP {  }
+%PRINT-RHYTHM { ;rhythms LDA2 DEBUG2 ;rhythms #0002 ADD2 LDA2 DEBUG2 }
+	
+	( devices )
+	|00 @System     [ &vector $2 &wst      $1 &rst    $1 &pad   $4 &r      $2 &g      $2 &b    $2 &debug  $1 &halt $1 ]
+	|10 @Console    [ &vector $2 &read     $1 &pad    $5 &write $1 &error  $1 ]
+	|20 @Screen     [ &vector $2 &width    $2 &height $2 &auto  $1 &pad    $1 &x      $2 &y    $2 &addr   $2 &pixel $1 &sprite $1 ]
+	|30 @Audio0     [ &vector $2 &position $2 &output $1 &pad   $3 &adsr   $2 &length $2 &addr $2 &volume $1 &pitch $1 ]
+	|40 @Audio1     [ &vector $2 &position $2 &output $1 &pad   $3 &adsr   $2 &length $2 &addr $2 &volume $1 &pitch $1 ]
+	|50 @Audio2     [ &vector $2 &position $2 &output $1 &pad   $3 &adsr   $2 &length $2 &addr $2 &volume $1 &pitch $1 ]
+	|60 @Audio3     [ &vector $2 &position $2 &output $1 &pad   $3 &adsr   $2 &length $2 &addr $2 &volume $1 &pitch $1 ]
+	|80 @Controller [ &vector $2 &button   $1 &key    $1 ]
+	|90 @Mouse      [ &vector $2 &x        $2 &y      $2 &state $1 &wheel  $1 ]
+	|a0 @File       [ &vector $2 &success  $2 &stat   $2 &delete $1 &append $1 &name  $2 &length $2 &read $2 &write $2 ]
+	|b0 @DateTime   [ &year   $2 &month    $1 &day    $1 &hour  $1 &minute $1 &second $1 &dotw $1 &doty   $2 &isdst $1 ]
+
+	
+	( main program )
+	|0100
+	
+
+	( ;my-string ;print-str JSR2 )
+		#0f0f .System/r DEO2 
+		#0ff0 .System/g DEO2 
+		#00ff .System/b DEO2
+
+    #0100 .Screen/width DEO2
+    #00c0 .Screen/height DEO2
+
+		( seed prng (must be nonzero) )
+		( #00 .DateTime/second DEI
+		#00 .DateTime/minute DEI #60 SFT2 EOR2
+		#00 .DateTime/hour   DEI #c0 SFT2 EOR2 ;prng2/x STA2
+		#00 .DateTime/hour   DEI #04 SFT2
+		#00 .DateTime/day    DEI #10 SFT2 EOR2
+		#00 .DateTime/month  DEI #60 SFT2 EOR2
+				.DateTime/year  DEI2 #a0 SFT2 EOR2 ;prng2/y STA2
+		;prng2/x LDA2 ;prng2/y LDA2 EOR2
+		ORAk ,&non-zero JCN INC2 &non-zero
+		;prng/seed STA2 )
+	
+		;loop .Screen/vector DEO2
+		;on-stdin .Console/vector DEO2
+		;on-button .Controller/vector DEO2
+		;sin-pcm .Audio0/addr DEO2 ( set sample address )
+		#0100 .Audio0/length DEO2 ( set sample length )
+		#0052 .Audio0/adsr DEO2 ( set envelope )
+		#ff .Audio0/volume DEO ( set maximum volume )
+		( ;random-wave-table JSR2 )
+		;load-theme JSR2
+    
+
+		#0018 .Screen/x DEO2
+		#0018 .Screen/y DEO2
+		#06 .Screen/auto DEO
+
+	BRK
+
+@on-button ( -> )
+  .Controller/button DEI #04 AND ;shift-down JCN2
+	.Controller/key DEI DUP #0d NEQ ,&no-return JCN
+    POP
+    ;language JMP2
+  &no-return
+    DUP #00 NEQ ,&no-zero JCN
+    BRK
+  &no-zero
+    DUP #08 NEQ ;no-backspace JCN2
+    ;text1-length LDA2 #0000 EQU2 ,&end JCN
+    ;text1-length LDA2 #0001 SUB2 ;text1-length STA2
+    POP #2000 ;text1 ;text1-length LDA2 ADD2 STA #02 
+    #0010 #0008 ;text1-length LDA2 MUL2 ADD2 .Screen/x DEO2 
+    ;draw-char JSR2
+    #2000 ;text1 ;text1-length LDA2 ADD2 STA #02 
+    #0010 #0008 ;text1-length LDA2 #0001 ADD2 MUL2 ADD2 .Screen/x DEO2 
+    ;draw-char JSR2
+    #0010 #0008 ;text1-length LDA2 MUL2 ADD2 .Screen/x DEO2
+    #00 .Screen/auto DEO
+    ;square .Screen/addr DEO2
+    #03 .Screen/sprite DEO
+    #06 .Screen/auto DEO
+   
+    
+    &end BRK
+    @shift-down
+      .Controller/key DEI #08 EQU ,&erase JCN
+      BRK
+      &erase
+        #2000 ;text1 ;text1-length LDA2 ADD2 STA #02 
+        #0010 #0008 ;text1-length LDA2 MUL2 ADD2 .Screen/x DEO2 
+        ;draw-char JSR2
+        ;text1-length LDA2 #0000 EQU2 ,&end JCN
+        ;text1-length LDA2 #0001 SUB2 ;text1-length STA2
+        ,&erase JMP
+        &end 
+        #0010 #0008 ;text1-length LDA2 MUL2 ADD2 .Screen/x DEO2
+        #00 .Screen/auto DEO
+        ;square .Screen/addr DEO2
+        #03 .Screen/sprite DEO
+        #06 .Screen/auto DEO
+        BRK
+        
+
+  @no-backspace
+    DUP ;text1 ;text1-length LDA2 ADD2 STA #02 
+    #0010 #0008 ;text1-length LDA2 MUL2 ADD2 .Screen/x DEO2
+    ;draw-char JSR2
+    ;text1-length LDA2 INC2 ;text1-length STA2
+    #0010 #0008 ;text1-length LDA2 MUL2 ADD2 .Screen/x DEO2
+    #00 .Screen/auto DEO
+    ;square .Screen/addr DEO2
+    #03 .Screen/sprite DEO
+    #06 .Screen/auto DEO
+
+  
+	
+
+BRK
+
+@square ff81 8181 8181 81ff ff81 8181 8181 81ff
+@blank ffff ffff ffff ffff
+@line 0000 00ff ff00 0000
+@last-draw [ &x $2 &y $2 &spr $2 ]
+@draw-str ( str* color -- )
+
+	STH
+	&while
+		LDAk STHkr ,draw-char JSR
+		INC2 LDAk ,&while JCN
+	POP2
+	POPr
+
+RTN
+
+@draw-char ( char color -- )
+
+	SWP
+	[ #20 - #00 SWP #40 SFT2 ;font ++ ] .Screen/addr DEO2
+	.Screen/sprite DEOk DEO
+	.Screen/y DEI2 #0010 -- .Screen/y DEO2
+	.Screen/x DEI2 #0008 ++ .Screen/x DEO2
+
+RTN
+
+@load-theme ( -- )
+	    ;theme/name .File/name DEO2 ( set address of file path )
+	    #0006 .File/length DEO2 ( will attempt to read 6 bytes )
+	
+	    ( set address for the data to read, and do read )
+	    ;theme/data .File/read DEO2 
+	
+	    ( check the success byte and jump accordingly )
+	    .File/success DEI2 #0006 NEQ2 ,&failed JCN 
+	
+	    &success
+	        ( set the system colors from the read data )
+	        ;theme/r LDA2 .System/r DEO2
+	        ;theme/g LDA2 .System/g DEO2
+	        ;theme/b LDA2 .System/b DEO2
+	    RTN
+	
+	    &failed
+	RTN
+	
+	@theme 
+	    &name ".theme 00
+	    &data ( reserving 6 bytes for the data: )
+	    &r $2 &g $2 &b $2
+
+
+@random-wave-table
+	#80 #00
+@loop-noise
+	DUP ;noise ROT #00 SWP ADD2 ;prng JSR2 
+	( DUP2 DEBUG2  )
+	SWP2 STA2
+	INC GTHk ,loop-noise JCN
+POP2
+
+@on-note-end
+	( #3c .Audio0/pitch DEO )
+RTN
+
+@my-string "1234567890 20 "abcdef 0a00
+
+@on-stdin ( -> )
+	.Console/read DEI DUP #0a EQU ,&end JCN
+  ;text-input ;count/i LDA2 ADD2 STA 
+  ;count/i LDA2 INC2 ;count/i STA2
+	BRK
+	&end 
+  ;text-input ;count/i LDA2 ADD2 STA 
+  #0000 ;count/i STA2
+  ;text-input ;print-str JSR2
+  ;language JMP2
+BRK
+
+
+
+@language ( -> )
+  ;text1 LDA DUP DEBUG
+	DUP LIT "n EQU ;pitch JCN2
+  DUP LIT "r EQU ;rhythm JCN2
+  DUP LIT "f EQU ;shiftadd JCN2
+  DUP LIT "i EQU ;set-instrument JCN2
+  DUP LIT "t EQU ;set-tempo JCN2
+  DUP LIT "s EQU ;toggle-vis JCN2
+  POP
+  BRK
+
+@toggle-vis
+	POP ;console-vis LDAk #01 EOR ROT ROT STA
+BRK
+
+@set-tempo
+	POP ;text1 #0002 ADD2 LDA2 SWP ;check-ascii-range JSR2 #10 MUL SWP ;check-ascii-range JSR2 ADD ;tempo #0001 ADD2 STA
+	
+BRK
+@shiftadd
+	POP ;rhythms LDA2 DUP2 #01 SFT2 ADD2 ;rhythms STA2
+	;rhythms #0002 ADD2 LDA2 DUP2 #01 SFT2 ADD2 ;rhythms #0002 ADD2 STA2
+BRK
+@pitch
+	#00 ;pitch-length STA
+	POP ;text1 #0002 ADD2 
+	( DUP2 DEBUG2 )
+	@more-pitches 
+	DUP2 LDA2
+	SWP #30 SUB #0a MUL SWP #30 SUB ADD
+	;pitches #00 ;pitch-length LDA ADD2 STA
+	;pitch-length LDA INC ;pitch-length STA 
+	#0003 ADD2 DUP2 #0001 SUB2 LDA 
+	LIT "] NEQ ,more-pitches JCN
+	PRINT-RHYTHM
+	POP2
+	;pitch-length LDA #00
+	( @print-notes
+		DUP #00 SWP ;pitches ADD2 LDA DEBUG
+		INC GTHk ,print-notes JCN
+	POP2	 )
+BRK
+@rhythm
+	POP #0008 #0000 
+	@loop-rhythm-ascii
+	DUP2
+	( c i 30 )
+	;text1 SWP2 #0002 ADD2 ADD2 LDA 
+		;check-ascii-range JSR2
+		( #0008 #Iter 00#Val #Iter #Iter #0002 MOD2 #0000 EQU2 )
+			#00 SWP OVR2 DUP2 #0002 MOD2 #0001 EQU2 ,&snib JCN
+				#0002 DIV2 ;rhythms ADD2 SWP2 #0010 MUL2 SWP2 STA POP ,&end JMP
+			&snib
+				#0002 DIV2 ;rhythms ADD2 STH2k LDA ADD STH2r STA POP ,&end JMP
+			&end
+			INC2 GTH2k ;loop-rhythm-ascii JCN2
+			( remove interator & count )
+			POP2 POP2
+
+BRK
+
+@set-instrument
+	POP ;text1 #02 ADD LDA #30 SUB 
+  DUP #08 LTH ,&short JCN
+  &long
+    #80 ;repeat-sample STA #2000 .Audio0/length DEO2 ,&end-if JMP
+  &short
+    #00 ;repeat-sample STA #0100 .Audio0/length DEO2
+  &end-if
+	DUP #01 EQU ,&sin JCN
+	DUP #02 EQU ,&tri JCN
+	DUP #03 EQU ,&saw JCN
+	DUP #04 EQU ,&violin JCN
+	DUP #05 EQU ,&piano JCN
+	DUP #06 EQU ,&noise JCN
+	DUP #07 EQU ,&noise-rand JCN
+	DUP #08 EQU ,&kick JCN
+	BRK
+	&sin #00 ;repeat-sample STA ;sin-pcm .Audio0/addr DEO2 POP BRK
+	&tri #00 ;repeat-sample STA ;tri-pcm .Audio0/addr DEO2 POP BRK
+	&saw #00 ;repeat-sample STA ;saw-pcm .Audio0/addr DEO2 POP BRK
+	&violin #00 ;repeat-sample STA ;violin-pcm .Audio0/addr DEO2 POP BRK
+	&piano #00 ;repeat-sample STA ;piano-pcm .Audio0/addr DEO2 POP BRK
+	&noise #00 ;repeat-sample STA ;noise .Audio0/addr DEO2 POP BRK
+	&kick #80 ;repeat-sample STA ;kick .Audio0/addr DEO2 POP BRK
+	&noise-rand ;prng JSR2 ;end-memory MOD2 .Audio0/addr DEO2 POP BRK
+
+
+@loop ( -> )
+
+	
+	( ;prng JSR2 ;end-memory MOD2 .Audio0/addr DEO2 )
+  ;count/c LDA2 INC2 ;count/c STA2
+
+  ( check for step )
+  ;count/c LDA2 ;tempo LDA2 #0020 DIV2 MOD2 #0000 NEQ2 ,&no-beat JCN
+	;reset-vis JSR2
+  ( check for first 16 )
+  ;count/c LDA2 ;tempo LDA2 MOD2 ;tempo LDA2 #0002 DIV2 LTH2 ;f16 JCN2
+  ( check for second 16 )
+  ;count/c LDA2 ;tempo LDA2 MOD2 ;tempo LDA2 LTH2 ;s16 JCN2
+		&no-beat
+		;console-vis LDA ,&no-vis1 JCN 
+		LIT ". #18 DEO
+		&no-vis1
+  BRK
+	
+  @s16
+		;rhythms #0002 ADD2 LDA2 ;bit-check LDA2 16STEP SFT2 AND2 #0000 NEQ2 #0000 STH2 ;play-note JCN2
+		;line
+		;vis JSR2 
+		;console-vis LDA ,&no-vis2 JCN 
+		LIT "! #18 DEO
+		&no-vis2
+  BRK
+
+  @f16
+		;rhythms LDA2 ;bit-check LDA2 16STEP SFT2 AND2 #0000 NEQ2 #0001 STH2 ;play-note JCN2
+		;line
+		;vis JSR2
+		;console-vis LDA ,&no-vis3 JCN 
+		LIT "! #18 DEO
+		&no-vis3
+  BRK
+	
+  @play-note 
+		
+		;blank
+		;vis JSR2
+		PLAY-NOTE
+		;console-vis LDA ,&no-vis4 JCN 
+		LIT "[ LIT "X #18 DEO2 LIT "] #0a #18 DEO2
+		&no-vis4
+
+	BRK
+
+	@vis ( spr/addr*2 step*2 rtn*2 )
+		
+		SWP2r
+		#00 .Screen/auto DEO
+		#0028 .Screen/y DEO2
+		.Screen/x DEI2
+		#000f #0007 #00 16STEP STH2r NIP ,&no-add16 JCN
+		#10 ADD
+		&no-add16
+		
+		MUL2 ADD2 .Screen/x DEO2
+		SWP2 DUP2 .Screen/addr DEO2
+		#01 .Screen/sprite DEO
+
+		( set last x y spr )
+		.Screen/x DEI2 ;last-draw/x STA2
+		.Screen/y DEI2 ;last-draw/y STA2
+		 ;last-draw/spr STA2
+
+		.Screen/x DEO2
+		#06 .Screen/auto DEO
+
+		
+
+		#0010 .Screen/y DEO2
+	RTN
+	@blank-vis
+		;last-draw/x LDA2 .Screen/x DEO2
+		;last-draw/y LDA2	.Screen/y DEO2
+		;blank .Screen/addr DEO2
+		#00 .Screen/sprite DEO
+
+	RTN
+
+	@reset-vis
+		;blank-vis JSR2
+		#00 .Screen/auto DEO
+		;last-draw/x LDA2 .Screen/x DEO2
+		;last-draw/y LDA2	.Screen/y DEO2
+		;last-draw/spr LDA2 .Screen/addr DEO2
+		#0a .Screen/sprite DEO
+		#06 .Screen/auto DEO
+	RTN
+
+@inc-bit-check
+  ;bit-check LDA2 #01 SFT2 DUP2 #0000 EQU2 ,&reset-bit-check JCN 
+  ;bit-check STA2
+  RTN
+  &reset-bit-check
+    #8000 ;bit-check STA2
+RTN
+
+
+
+BRK
+
+ @print-hex ( value* -- )
+	
+	SWP ,&byte JSR 
+	&byte ( byte -- )
+		STHk #04 SFT ,&parse JSR #18 DEO
+		STHr #0f AND ,&parse JSR #18 DEO
+	RTN
+	&parse ( byte -- char ) DUP #09 GTH ,&above JCN #30 + RTN 
+	&above #57 + RTN
+
+RTN
+
+@print-dec ( value* -- )
+
+	#2710 DIV2k DUP #30 ADD #18 DEO MUL2 SUB2
+	#03e8 DIV2k DUP #30 ADD #18 DEO MUL2 SUB2
+	#0064 DIV2k DUP #30 ADD #18 DEO MUL2 SUB2
+	#000a DIV2k DUP #30 ADD #18 DEO MUL2 SUB2
+	#30 ADD #18 DEO POP
+
+RTN
+
+@print-str ( string* -- )
+
+  
+	#0001 SUB2 
+	&while
+		INC2 LDAk DUP #18 DEO #0a NEQ ,&while JCN 
+	POP2
+  
+RTN
+
+@prng ( -- number* )
+	( returns the next number in a 65,535-long sequence,
+	  which is never zero but every other 16-bit number
+	  appears once before the sequence repeats )
+	( http://www.retroprogramming.com/2017/07/xorshift-pseudorandom-numbers-in-z80.html )
+	,&seed LDR2
+	DUP2 #70 SFT2 EOR2
+	DUP2 #09 SFT2 EOR2
+	DUP2 #80 SFT2 EOR2	
+	,&seed STR2k POP
+	JMP2r
+
+	&seed $2
+
+@prng2 ( -- number* )
+	( returns the next number in a (2^32-1)-long sequence )
+	( http://b2d-f9r.blogspot.com/2010/08/16-bit-xorshift-rng-now-with-more.html )
+	,&x LDR2
+	DUP2 #50 SFT2 EOR2
+	DUP2 #03 SFT2 EOR2
+	,&y LDR2 DUP2 ,&x STR2
+	DUP2 #01 SFT2 EOR2 EOR2
+	,&y STR2k POP
+	JMP2r
+
+	&x $2
+	&y $2
+
+@check-ascii-range
+	DUP IS-NUM ,&num JCN 
+	DUP IS-LC ,&lc JCN
+	DUP IS-UC ,&uc JCN
+	&num
+		#30 SUB
+	,&continue JMP
+	&lc
+		#57 SUB
+	,&continue JMP
+	&uc
+		#37 SUB
+	&continue
+	RTN
+
+@noise $100
+
+@piano-pcm
+	8182 8588 8d91 959b a1a6 aaad b2b5 b8bd
+	c1c7 cbd0 d5d9 dde1 e5e5 e4e4 e1dc d7d1
+	cbc5 bfb8 b2ac a6a2 9c97 928d 8884 807c
+	7977 7574 7372 7272 7273 7372 706d 6964
+	605b 5650 4d49 4643 4342 4244 4548 4a4d
+	5052 5556 5758 5554 5150 4c4a 4744 423f
+	3d3c 3a38 3835 3431 3030 2f31 3336 393e
+	4449 4e54 5a60 666b 7175 7b82 8990 989e
+	a6ab b1b6 babd bebf bfbe bbb9 b6b3 b0ae
+	aaa8 a6a3 a19e 9c9a 9997 9696 9798 9b9e
+	a1a4 a6a9 a9ac adad adae aeaf b0b0 b1b1
+	b3b3 b4b4 b4b3 b3b1 b0ad abab a9a9 a8a8
+	a7a5 a19d 9891 8b84 7e77 726e 6b6b 6b6c
+	6f71 7477 7776 7370 6c65 5e56 4e48 423f
+	3d3c 3b3a 3a39 3838 3839 393a 3c3e 4146
+	4a50 575b 6064 686a 6e70 7274 7677 7a7d
+
+@violin-pcm
+	8681 8d94 9ba0 a3a7 acb1 b5bc c2c7 cacc
+	cecf d0d1 d3d5 d8db dee1 e3e5 e6e5 e5e3
+	dfdc d7d0 c8c2 bbb2 a99f 968c 847c 746e
+	675f 5851 4b43 3e3a 3533 312e 2c2b 2826
+	2422 2122 2327 2d34 3c44 4c57 5f68 7075
+	7b80 8487 8789 8a8c 8d90 9397 999c 9ea0
+	a2a2 a2a0 9c97 9491 8f8e 908f 918f 8e88
+	827a 726a 6058 5047 423f 3f40 4245 4748
+	4949 4746 4545 4a4f 5863 717f 8b9a a6b1
+	b8be c1c1 bfbd bab5 b1af acac aeb1 b7bc
+	c2c9 cfd3 d5d4 d3d3 d1ce cbc6 c0ba b3ab
+	a39a 8f85 7b72 6c67 6462 605f 5e5d 5b58
+	5550 4d49 4848 4949 4a4d 5052 5558 5b5e
+	6164 686c 7074 7677 7979 7a7b 7b7a 7977
+	7473 6f6e 6b69 696b 6f72 7576 7574 716b
+	655d 554e 4742 3f3f 4045 4b52 5a62 6b74
+
+@sin-pcm
+	8083 8689 8c8f 9295 989b 9ea1 a4a7 aaad
+	b0b3 b6b9 bbbe c1c3 c6c9 cbce d0d2 d5d7
+	d9db dee0 e2e4 e6e7 e9eb ecee f0f1 f2f4
+	f5f6 f7f8 f9fa fbfb fcfd fdfe fefe fefe
+	fffe fefe fefe fdfd fcfb fbfa f9f8 f7f6
+	f5f4 f2f1 f0ee eceb e9e7 e6e4 e2e0 dedb
+	d9d7 d5d2 d0ce cbc9 c6c3 c1be bbb9 b6b3
+	b0ad aaa7 a4a1 9e9b 9895 928f 8c89 8683
+	807d 7a77 7471 6e6b 6865 625f 5c59 5653
+	504d 4a47 4542 3f3d 3a37 3532 302e 2b29
+	2725 2220 1e1c 1a19 1715 1412 100f 0e0c
+	0b0a 0908 0706 0505 0403 0302 0202 0202
+	0102 0202 0202 0303 0405 0506 0708 090a
+	0b0c 0e0f 1012 1415 1719 1a1c 1e20 2225
+	2729 2b2e 3032 3537 3a3d 3f42 4547 4a4d
+	5053 5659 5c5f 6265 686b 6e71 7477 7a7d
+
+@tri-pcm
+	8082 8486 888a 8c8e 9092 9496 989a 9c9e
+	a0a2 a4a6 a8aa acae b0b2 b4b6 b8ba bcbe
+	c0c2 c4c6 c8ca ccce d0d2 d4d6 d8da dcde
+	e0e2 e4e6 e8ea ecee f0f2 f4f6 f8fa fcfe
+	fffd fbf9 f7f5 f3f1 efed ebe9 e7e5 e3e1
+	dfdd dbd9 d7d5 d3d1 cfcd cbc9 c7c5 c3c1
+	bfbd bbb9 b7b5 b3b1 afad aba9 a7a5 a3a1
+	9f9d 9b99 9795 9391 8f8d 8b89 8785 8381
+	7f7d 7b79 7775 7371 6f6d 6b69 6765 6361
+	5f5d 5b59 5755 5351 4f4d 4b49 4745 4341
+	3f3d 3b39 3735 3331 2f2d 2b29 2725 2321
+	1f1d 1b19 1715 1311 0f0d 0b09 0705 0301
+	0103 0507 090b 0d0f 1113 1517 191b 1d1f
+	2123 2527 292b 2d2f 3133 3537 393b 3d3f
+	4143 4547 494b 4d4f 5153 5557 595b 5d5f
+	6163 6567 696b 6d6f 7173 7577 797b 7d7f
+
+@saw-pcm
+	8282 8183 8384 8685 8888 8889 8a8b 8c8c
+	8e8e 8f90 9092 9193 9494 9596 9699 9899
+	9b9a 9c9c 9c9d 9ea0 a1a0 a2a2 a3a5 a4a6
+	a7a7 a9a8 a9aa aaac adad aeae b0b0 b1b3
+	b2b4 b5b5 b6b7 b9b8 b9bb babc bdbc bdbe
+	bfc1 bfc1 c3c1 c4c5 c5c6 c6c7 c9c7 cbca
+	cbcc cdcd cfcf d2d0 d2d2 d2d5 d4d5 d6d7
+	d8d8 d9dc d9df dadf dce1 dde5 dce6 dceb
+	cb1f 1b1e 1c21 1c21 1f23 2025 2127 2329
+	2529 2829 2a2b 2b2e 2d2f 302f 3231 3234
+	3334 3536 3836 3939 3a3b 3b3d 3e3d 3f40
+	4042 4242 4444 4646 4748 474a 4a4b 4d4c
+	4e4e 4f50 5052 5252 5554 5557 5759 5959
+	5b5b 5c5d 5d5f 5e60 6160 6264 6365 6566
+	6867 6969 6a6c 6c6d 6d6e 706f 7071 7174
+	7475 7576 7777 797a 7a7c 7b7c 7e7d 7f7f
+
+@kick
+	8181 8182 8382 8182 8181 8081 8181 807f 7f80 8082 8280 7d7c 8081 7f80 8286 888c 8e8d 887e 756e 6a69 6864 5a55 5046 3934 3a42 3d3a 4a6d 8173 5341 4247 443e 3b41 4542 3d42 4e52 4a46 5d81 917a 5442 494f 4a43 454a 4a45 4749 4b48 494a 4c4c 4f51 525a 6c84 9491 847e 89a4 c2d8 dbc9 a889 7b7a 776d 6468 7b92 a9c3 dce7 e5e1 e4e6 e5e1 e1e2 e1dd dede dddc dadc dad8 d7d8 d7d5 d5d5 d5d3 d2d2 d2d1 d0d0 d0ce cdcd cdcb cacb cac9 c9c8 c8c7 c6c5 c5c5 c5c4 c4c2 c2c1 c1c1 bfc0 bfbf bfbd bdbd bcbb bcbb bab9 b9b9 b9b6 b4b4 b4ae a196 9498 9386 7c7e 8891 928c 7f6a 5033 201a 212d 3534 2b24 1f1e 1f20 2122 2223 2424 2526 2828 2929 2a2b 2b2c 2d2e 2e2e 2f30 3031 3232 3334 3335 3535 3737 3838 393a 3a3b 3c3b 3b3d 3d3e 3d40 403f 4041 4142 4343 4445 4446 4546 4747 4748 4948 494b 4b4b 4b4b 4c4c 4d4d 4e4f 4f4f 5050 5051 5252 5352 5254 5354 5455 5556 5657 5657 595b 5b5e 6877 827e 7272 89a8 bfc6 c4be bdc1 cddc e8ec ebe5 e2e1 e5ed efed e8e8 e9ea e6e5 e6e5 e4e2 e2e1 e0df dfdf dddd dddc dbda d9d8 d8d7 d6d6 d5d4 d4d4 d2d2 d1d1 d0cf cfce cdcd cccc cacb cac9 c9c8 c7c7 c7c6 c5c5 c4c3 c3c2 c2c1 c1c0 c0bf bfbf bdbc bebc bbbb bbba bab9 bab9 b9b7 b7b7 b6b5 b6b5 b4b3 b3b3 b2b1 b2b2 afac abab a08c 776b 6c74 808d 938f 857a 7571 6c63 5c5a 5957 5654 5150 504f 4c4c 4c4a 4644 4545 4242 4345 4440 3d38 332c 2928 2522 2020 2223 2324 2626 2728 292a 292a 2b2d 2c2d 2e2f 2f30 3030 3133 3334 3434 3536 3637 3838 3839 3a3a 3b3c 3c3e 3d3e 3f3f 4040 4041 4242 4343 4444 4545 4647 4647 4748 4849 494a 4b4c 4b4c 4d4d 4c4d 4e4e 4f4e 4f50 5051 5052 5152 5353 5455 5556 595f 656a 6d72 7980 878d 95a0 a9af b4b8 bec9 d5dd e0de dee3 e9eb ebe9 e9ea e8e6 e6e5 e5e3 e3e2 e1e1 e0e0 dede dddc dcda dad9 d8d7 d7d6 d6d4 d4d3 d3d2 d2d1 d0d0 d0ce cecd cdcc cccb cbca cac9 c8c7 c6c7 c5c5 c5c4 c4c4 c3c2 c1c0 c0bf bfbe bfbd bebd bcbb bbbb bbba b9b9 b8b8 b8b7 b6b5 b5b6 b4b4 b3b3 b3b2 b3b1 b1b1 b0af b0af aeae aeae aead acad acab aaab aaa9 a9a7 a7a4 a19d 9c9a 9996 938e 8885 8380 7d7b 7977 7672 706f 6f6e 6c6b 6967 6461 5f5d 5d5a 5754 514f 504f 4c49 4848 4542 3f3f 3f3f 3d3c 3b39 3836 3332 3232 3330 302f 2f2e 2d2b 2928 2522 2120 2121 2122 2324 2425 2626 2728 2929 2a2b 2c2c 2d2e 2e2e 2f30 3031 3133 3334 3435 3637 3737 3739 3939 3b3a 3b3c 3d3d 3e3e 3f40 4040 4041 4242 4344 4445 4545 4646 4748 4848 4849 4a49 4a4a 4c4c 4c4d 4e4e 4f4f 4f50 5050 5151 5153 5453 5355 5556 575a 5d60 6568 6d6f 6f70 6f70 7070 7071 7272 7474 7677 797b 7d7e 8081 8284 8587 888b 8c8c 8d8c 8c8d 8e90 9396 999b 9c9d 9e9e 9ea0 9fa0 a0a0 a2a4 a6a9 abab abac acad adae b0b1 b4b6 b8b9 b9bb bcbc bcbd bdbe c0c0 bfc0 bfbf bfbf c2c2 c2c4 c4c6 c8ca cccd cfd0 d0d0 d1d0 d2d3 d4d5 d7d6 d7d7 d8d8 d8d8 d7d6 d6d5 d4d3 d2d2 d1d0 cfcf cfcf cdcd cccc cbca cac9 c8c9 c7c7 c7c6 c5c5 c4c4 c3c3 c2c1 c1c0 bfbf bfbe bebd bdbd bcbb bbbb bab9 b9b9 b8b7 b7b7 b6b6 b4b3 b1b0 afae acab a9a8 a8a6 a5a4 a2a0 9e9e 9c9a 9998 9694 9392 908f 8c8a 8685 8381 7e7e 7b79 7876 7575 7675 7575 7575 7473 7371 7170 7171 7072 7272 7271 6f6c 6b69 6a6b 6b6a 6a6a 6969 6868 6566 6563 6361 605f 5f5e 5c5b 5c5c 5d5e 5d5c 5c5b 5a59 5756 5554 5354 5253 5153 5251 5150 4e4e 4d4c 4b4b 4a4a 4949 4948 4847 4746 4545 4545 4345 4444 4545 4544 4645 4546 4645 4444 4241 4140 3f3f 3d3c 3c3b 3b3a 3938 3838 3937 3838 3939 3839 3a3b 3b3c 3c3c 3d3e 3e3f 3f3f 4140 4243 4443 4344 4546 4647 4747 494a 4b4c 4d4f 504f 4f52 5354 5557 585b 5b5e 5f61 6364 6667 696b 6d6e 7073 7478 797b 7c7f 8284 8688 8a8b 8c8e 8f90 8f8f 8e90 9295 999c 9d9e a1a4 a7aa aeb1 b4b7 b9bb bdbf c1c3 c5c5 c6c7 c7c7 c7c7 c9c9 caca caca caca c9ca c9c9 c9c9 c9ca c9ca caca cbc9 cbca cbca caca c9c9 c8c6 c6c5 c5c4 c2c1 bfbe bdbc bab8 b6b4 b2b1 afae acac acaa a9a8 a6a4 a4a3 a2a1 9f9d 9d9a 9998 9797 9796 9492 9392 9090 8f8e 8e8e 8c8c 8b8b 8a88 8787 8684 8482 8282 8080 7f80 7e7f 7e7d 7d7a 7978 7978 7776 7676 7474 7373 7271 7071 7070 6f6f 6f6e 6e6d 6d6b 6b6a 696a 6868 6867 6767 6767 6767 6666 6665 6465 6564 6466 6565 6463 6362 6262 6262 6161 6161 6161 6061 6061 6060 5f5e 5d5c 5b5a 5a59 5757 5656 5555 5655 5454 5354 5454 5455 5553 5150 4f4e 4d4b 4a49 4949 4846 4646 4542 4242 4243 4444 4445 4545 4747 4748 4948 494a 4b4b 4c4b 4c4d 4d4d 4e4e 4f4f 5050 5151 5252 5253 5354 5454 5555 5556 5656 5658 5859 5959 595a 5a5b 5a5b 5b5c 5b5c 5c5d 5e5d 5e5e 5e5f 5f60 5f60 6061 6261 6162 6363 6363 6465 6466 6668 6a6d 6f72 7475 797b 7e7f 8284 8689 8a8b 8e8f 9193 9496 999b 9d9f a0a3 a5a6 a7a9 abac adaf b1b2 b3b6 b8b9 babb bdbf c0c1 c2c4 c6c8 c9cb ccce cfd0 d2d3 d4d4 d6d6 d7d8 d9db dbdc dedf e0e1 e3e4 e5e6 e6e8 e8e7 e6e5 e5e3 e2e3 e1e1 dfdf dedd dddc dcdb dad9 d9d8 d7d7 d6d5 d4d4 d4d2 d3d1 d0d0 cfcf cdcd cecc cccb cbcb c9c8 c8c8 c6c6 c6c5 c5c4 c3c4 c2c2 c1c1 c1c0 bfbf bfbd bebc bcbc bbbb baba b9ba b9b8 b7b7 b7b6 b5b5 b5b4 b4b3 b3b3 b2b2 b1b0 b0b0 b0af afae aead adad acac abac aba9 aaaa a9a8 a8a8 a8a7 a7a6 a6a6 a6a5 a4a4 a3a2 9e9c 9a98 9593 928f 8d8b 8987 8583 8180 7d7b 7876 7473 7271 706d 6c6b 6a68 6765 6361 605f 5e5c 5a58 5756 5452 5150 4e4d 4b4b 4a49 4847 4745 4443 4341 413f 3f3d 3d3c 3c3c 3b3a 3a39 3837 3635 3433 3131 3030 302f 302f 2e2e 2d2f 2e2e 2e2e 2e2c 2c2c 2c2c 2a2a 2a2b 2b2b 2b2a 2b2c 2d2c 2e2e 2e2f 3031 3032 3233 3434 3535 3636 3737 3839 393a 3a3a 3c3c 3d3d 3d3e 3f3f 3f40 4141 4142 4344 4545 4545 4646 4748 4849 4a49 4a4b 4a4b 4b4c 4c4d 4d4e 4e4f 4f4f 5150 5151 5152 5253 5354 5454 5555 5656 5657 5758 5858 5859 5959 5a5b 5b5b 5c5b 5d5d 5e5e 5e5f 5f61 6262 6565 6766 6868 6a6c 6c6f 6f71 7272 7374 7577 7677 797a 7a7c 7d7e 8081 8284 8587 8788 8889 8a8c 8c8c 8d8e 8f8f 9091 9293 9495 9596 9898 9899 9a9c 9c9d 9d9e 9fa0 a0a1 a0a1 a1a1 a2a3 a3a3 a4a4 a4a6 a5a6 a6a6 a7a7 a7a7 a7a6 a7a6 a6a7 a6a6 a7a7 a8a8 a9a9 a9a9 a9a9 aaa9 a9aa a9a9 a9a9 a9a9 a9aa a9aa aaaa a8a9 a8a8 a8a9 a9a9 aaa9 a9a9 aaaa aaa9 a8a9 a8a7 a9a8 a8a8 a8a7 a9a8 a8a9 a9a9 a8a7 a7a6 a5a5 a5a5 a5a6 a5a4 a5a4 a5a4 a5a5 a6a5 a5a6 a6a6 a5a6 a6a6 a6a6 a5a4 a4a4 a5a6 a6a6 a6a6 a6a6 a5a5 a6a6 a4a4 a3a3 a4a5 a5a5 a4a4 a4a4 a4a4 a3a4 a4a5 a5a4 a4a5 a5a5 a4a3 a4a3 a2a2 a1a0 a1a1 a1a2 a1a1 a2a2 a1a2 a2a2 a1a2 a2a1 a2a2 a2a2 a2a3 a3a2 a2a1 a1a1 a1a0 9f9f a09f 9f9f 9f9f a09f 9f9f 9f9e 9e9e 9e9e 9e9d 9e9e 9e9e 9d9e 9e9d 9c9c 9d9d 9d9c 9b9c 9c9b 9c9a 9999 9999 9998 9897 9898 9898 9898 9796 9696 9695 9595 9494 9393 9393 9291 9190 9191 9191 908e 8e8e 8d8d 8d8c 8b8b 8a89 8888 8888 8787 8786 8586 8585 8484 8283 8281 8080 807f 7f7e 7e7d 7e7e 7d7d 7d7d 7d7c 7c7b 7a79 7979 7877 7777 7777 7776 7676 7674 7475 7474 7474 7473 7271 7271 7172 7272 7270 706f 6f6f 6e6f 6e6e 6e6e 6e6e 6e6e 706f 6f6e 6e6d 6c6c 6c6d 6c6c 6c6c 6b6c 6b6b 6c6b 6c6c 6b6b 6c6b 6c6c 6b6b 6b6a 6b6c 6a6b 6a6a 6a6b 6b6b 6c6b 6b6b 6b6b 6b6b 6c6c 6b6c 6b6c 6b6b 6b6c 6b6c 6c6c 6c6d 6c6d 6d6e 6f6f 706f 6f6e 6e6e 6e6f 6f6f 7070 7171 7271 7272 7274 7474 7475 7473 7474 7474 7475 7675 7676 7676 7778 7878 7878 7878 7879 797a 797b 7a7b 7b7b 7c7d 7d7e 7d7e 7e7f 7e7f 7f80 7f7f 7f80 8080 8182 8182 8281 8382 8284 8585 8483 8484 8484 8484 8483 8383 8283 8484 8586 8586 8585 8685 8686 8686 8787 8687 8788 8788 8786 8786 8786 8585 8585 8587 8687 8685 8685 8687 8686 8585 8485 8484 8383 8382 8282 8282 8282 8284 8484 8381 8281 8281 8180 7f80 7f7f 7f7f 7f7e 7d7f 7e7e 7e7d 7c7c 7d7c 7c7c 7b7b 7b7a 7a7a 7877 7777 7777 7777 7777 7777 7776 7675 7475 7474 7472 7272 7272 7373 7472 7272 7271 7171 6f70 6f70 706f 7070 7170 7070 7070 706f 6f6f 6f6e 6e6d 6d6d 6e6e 6d6d 6d6c 6d6b 6c6b 6c6b 6c6c 6c6c 6a6a 6c6c 6a6b 6c6c 6c6b 6b6c 6b6a 6a6b 6a6b 6a69 6a6a 6a69 6969 6969 6967 696a 6a6b 6b6a 6b6c 6b6a 6a6a 6969 6969 696a 6868 6869 6969 6a6a 6b6a 6b6a 6a6a 6a6b 6a6c 6b6b 6c6b 6a6a 6b6c 6c6c 6c6c 6d6d 6e6e 6e6e 6e6e 6e6e 6d6e 6e6e 6f70 706f 7070 7070 7072 7171 7272 7171 7273 7373 7373 7373 7474 7575 7675 7575 7675 7676 7677 7677 7677 7778 7979 7979 7979 7978 797a 7a7b 7b7b 7c7c 7d7e 7e7f 7e7e 7e7f 8080 807f 7e7e 7e7e 7e7f 7f80 8182 8283 8483 8383 8282 8382 8282 8282 8282 8383 8383 8485 8484 8586 8687 8787 8989 8a8a 8988 8888 8988 898a 8a8c 8c8b 8c8c 8b8d 8d8d 8d8e 8e8f 8f90 8f91 9190 9090 9191 9191 9192 9292 9394 9393 9494 9595 9595 9595 9595 9596 9596 9696 9696 9897 9797 9999 999a 9a9a 9a9a 9a9c 9b9b 9c9c 9c9b 9b9c 9b9b 9b9c 9b9b 9c9c 9d9e 9d9d 9e9d 9e9e 9e9e 9f9f 9f9f 9f9e 9f9f 9e9f 9f9e 9f9f 9d9d 9e9e 9d9e 9d9e 9c9d 9d9d 9e9e 9f9f 9e9d 9d9d 9d9c 9c9d 9c9c 9b9c 9b9b 9b9a 9b9a 9b9b 9b9a 9a9a 9a9a 9998 9897 9796 9495 9595 9495 9594 9494 9594 9595 9594 9493 9393 9292 9191 9192 9191 8f8f 8f8f 8f8f 8f8f 8e8d 8c8c 8c8c 8c8b 8989 8988 8786 8586 8586 8584 8584 8484 8584 8483 8383 8382 8382 8180 8080 8180 7d7d 7d7c 7b7b 7b7a 7a79 797a 7978 7979 7979 7a79 7a7a 7979 7978 7779 7878 7777 7676 7573 7373 7273 7273 7273 7473 7273 7273 7373 7272 7373 7373 7372 7272 7272 7373 7271 7272 7272 7271 7272 7274 7472 7273 7273 7374 7374 7373 7372 7372 7271 7170 7070 7070 7172 7373 7373 7473 7574 7574 7575 7474 7574 7574 7373 7373 7372 7373 7374 7576 7675 7777 7878 7879 7879 7879 7a7a 7a7a 7b7b 7b7a 7b7a 7b7b 7b7c 7c7c 7c7d 7e7e 7f7f 807f 7f80 7f80 8081 8183 8384 8586 8584 8584 8585 8685 8586 8687 8788 8888 8888 8989 898a 8a8b 8c8b 8c8c 8c8c 8d8c 8e8e 8d8d 8d8e 8e8e 8e8f 8f8f 8f90 9090 9290 9090 9091 9191 9191 9292 9291 9191 9192 9192 9291 9191 9192 9191 9292 9192 9192 9190 9090 9092 9191 9191 9290 9190 908e 8e8d 8e8d 8d8d 8c8c 8b8c 8c8c 8c8b 8b8b 8b8c 8b8b 8b8b 8b8c 8b8b 8989 8889 8787 8685 8485 8483 8383 8383 8483 8383 8484 8383 8382 8282 8180 7f7f 7e7d 7e7d 7d7c 7c7b 7b7a 7a79 7979 7979 7979 7878 7879 7878 7776 7676 7575 7574 7474 7372 7272 7172 7372 7372 7172 7171 7172 7170 7070 7070 716f 6f70 6f6f 6f6f 6f6f 706f 6e6e 6d6c 6c6d 6d6d 6d6c 6d6d 6d6e 6e6d 6d6e 6e6d 6d6d 6d6d 6c6c 6c6c 6c6b 6b6b 6a6a 6a6b 6b6b 6c6c 6c6b 6b6c 6b6b 6c6b 6b6b 6b6b 6b6a 6b6b 6b6a 6b6b 6a6a 6a6a 696a 6968 696a 6a69 6868 6968 6969 6867 6867 6767 6869 6969 696a 6a69 6968 6869 6969 6968 6868 6768 6868 6768 6868 6867 6868 6869 6868 6867 6868 6768 6868 6869 6768 6768 6867 6867 6766 6667 6768 6869 6868 6868 6868 6a69 6a6a 696a 6a6a 6a6a 6a69 6a69 6a6b 6b6a 6c6b 6c6b 6b6b 6d6d 6c6d 6d6e 6e6d 6e6f 6f70 7070 7070 7070 7170 7272 7272 7272 7273 7374 7476 7575 7676 7776 7676 7677 7777 7877 7879 7979 7a79 7979 7a7a 7b7c 7c7c 7d7d 7e7d 7d7f 7f7f 7f80 7f80 807f 7f7f 8181 8282 8283 8283 8383 8382 8383 8483 8483 8485 8686 8787 8787 8788 8889 888a 8989 8a89 898b 8b8a 8b8a 8b8a 8b8b 8b8c 8c8c 8d8d 8e8e 8d8e 9090 908f 8f8e 8e8e 908f 9090 9191 9191 9192 9292 9393 9293 9393 9394 9494 9494 9393 9395 9596 9796 9596 9696 9697 9797 9898 9899 989a 9999 9898 9898 9898 9999 9a99 9999 9a99 999a 9b9b 9b9c 9c9c 9c9c 9d9c 9c9c 9c9b 9c9c 9d9e 9d9d 9c9e 9d9e 9e9e 9e9e 9e9e 9e9e 9d9d 9e9f 9e9f 9f9f 9f9f 9f9f 9f9f a0a0 a0a0 a09e 9e9f 9f9f 9f9f 9e9f 9e9e 9e9e 9f9f 9e9e 9e9f 9e9f 9f9e 9e9f 9f9e 9e9e 9e9e 9e9e 9e9f 9f9e 9e9e 9e9e 9d9d 9e9e 9e9e 9d9d 9d9e 9d9d 9d9d 9c9c 9b9b 9b9a 9a9b 9a99 9a99 9999 9999 9999 9898 9898 9898 9898 9797 9696 9697 9796 9796 9595 9595 9596 9696 9594 9494 9494 9494 9393 9393 9392 9292 9392 9292 9292 9293 9293 9391 9191 9291 9190 9090 9090 9190 908f 9090 9091 9092 9292 9191 9191 908f 8f8e 8f8f 8f8f 8f8e 8f8f 8f8f 9090 908f 8f91 9090 9090 9091 9090 908f 908e 8f8e 8e8e 8e8e 8e8f 8e8f 8f8e 8e8e 8f90 8f90 908f 8f8f 8f90 8f8f 8f8e 8f8f 8f8f 8f8f 9090 9090 908f 8e8d 8d8e 8e8d 8d8d 8e8d 8d8d 8e8d 8d8d 8d8d 8c8d 8d8e 8e8d 8c8d 8d8c 8c8c 8c8b 8a8a 8989 8a8a 898a 8a89 898a 8989 8887 8787 8787 8687 8787 8685 8585 8484 8483 8283 8182 8281 8080 8081 8080 7f7f 7e7e 7f7e 7d7c 7c7b 7d7b 7a79 7a79 7878 7877 7776 7675 7575 7474 7474 7374 7372 7271 7170 706f 6f6f 6e6e 6e6e 6d6c 6c6b 6b6b 6a6a 6969 6969 6867 6766 6767 6666 6566 6565 6464 6565 6464 6262 6161 6160 615f 5f60 5f5f 5e5e 5e5e 5e5e 5f5f 5f5e 5e5e 5d5d 5e5d 5d5c 5c5b 5c5c 5c5c 5d5d 5c5c 5a5b 5b5a 5a5b 5a59 5a5a 595a 5a5b 5b5b 5b5b 5b5b 5b5b 5b5b 5b5c 5b5b 5a5b 5a5a 5b5a 5b5c 5b5d 5c5c 5c5c 5c5e 5e5d 5f5e 5e5e 5e5e 5e5f 5f5e 5f5f 5f5e 5f5f 5f5f 5f5f 605f 6061 6161 6161 6062 6162 6262 6362 6363 6363 6362 6364 6463 6464 6463 6464 6565 6666 6667 6667 6666 6767 6767 6766 6667 6767 6867 6767 6868 6969 6969 6969 696a 6a69 6969 6969 6a6a 6a6b 6a6b 6b6c 6c6c 6c6c 6d6c 6d6e 6e6d 6e6e 6d6d 6d6d 6e6e 6d6f 6e6f 6f6f 6f70 7070 7170 7071 7171 7272 7272 7172 7172 7172 7271 7171 7172 7272 7373 7272 7273 7373 7474 7575 7576 7676 7677 7776 7675 7575 7575 7677 7777 7778 7879 7a79 7979 797a 7a7a 7b7b 7b7b 7b7b 7b7b 7c7b 7c7b 7b7b 7c7c 7d7d 7e7d 7e7e 7f7e 7e7f 7e80 7f80 8080 8182 8182 8484 8484 8383 8484 8485 8685 8685 8586 8787 8788 8888 8889 8889 8a8a 8a8b 8b8c 8c8b 8c8b 8c8c 8c8c 8c8c 8c8c 8d8e 8e8f 8f90 9090 9091 9291 9292 9292 9293 9392 9393 9393 9394 9494 9495 9495 9595 9697 9798 9797 9897 9898 9797 9998 9899 9999 9999 9a99 9b9b 9a9b 9b9b 9a9b 9b9b 9c9c 9d9c 9b9c 9c9d 9d9d 9d9e 9d9e 9f9e 9e9e 9f9f 9fa0 9fa0 9fa1 a0a0 a0a0 a0a0 9f9f a0a0 a1a1 a1a1 a2a1 a2a2 a2a2 a3a1 a2a2 a2a2 a2a2 a2a3 a3a3 a3a3 a2a3 a5a5 a5a5 a4a4 a5a4 a5a4 a5a5 a5a4 a4a4 a4a4 a4a4 a5a5 a5a5 a5a6 a6a6 a6a6 a5a5 a6a5 a5a5 a5a5 a6a5 a5a4 a4a3 a3a3 a2a4 a3a3 a3a3 a2a3 a4a3 a3a3 a3a2 a2a2 a3a2 a2a1 a0a1 a1a1 a1a1 a1a0 a0a1 a0a0 9f9f 9fa0 9f9e 9e9d 9d9c 9c9c 9c9b 9b9b 9c9b 9b9a 9a9a 9999 9999 9898 9798 9897 9696 9696 9594 9594 9493 9393 9292 9291 9190 9090 908f 8f8e 8e8e 8d8d 8d8d 8d8c 8c8c 8c8b 8b8b 8a8b 8b8b 8b89 8a8a 8988 8889 8787 8685 8685 8485 8584 8484 8383 8483 8484 8382 8281 8181 8181 8281 8081 8080 8180 8080 7f7f 7f7f 7e7f 7f7e 7e7e 7e7d 7d7d 7d7e 7f7e 7e7e 7e7e 7e7f 7e7e 7e7d 7e7c 7d7e 7d7d 7c7b 7c7c 7c7c 7c7c 7c7c 7d7d 7e7d 7d7d 7e7d 7d7d 7d7d 7d7d 7d7d 7e7d 7d7d 7c7d 7d7d 7d7d 7d7d 7d7e 7e7e 7e7e 7e7e 7e7e 7f7e 7e7e 7d7d 7d7d 7e7e 7e7e 7f7e 7e7e 7e7e 7d7e 7e7f 7e7e 7e7e 7e7e 7f7f 7f7f 8080 8080 8080 8080 807f 807f 7f7f 7e7e 7f7e 7f7f 7f7f 7f7e 8080 7f7f 7f80 8080 807f 807f 7f7e 7e7e 7e7e 7e7f 7e7e 7e7e 7e7e 7e7e 7e7e 7e7e 7f7d 7e7e 7e7e 7e7d 7d7e 7e7f 7e7e 7d7e 7d7d 7e7e 7e7f 7e7d 7d7c 7d7c 7e7d 7d7d 7c7b 7b7b 7b7b 7b7c 7c7c 7b7c 7b7c 7b7b 7b7b 7b7a 7a7a 7a79 7a7a 7a79 7979 7979 7979 7879 7878 7878 7878 7879 7878 7876 7777 7778 7776 7776 7676 7676 7576 7675 7676 7676 7776 7576 7475 7374 7474 7474 7474 7373 7374 7373 7373 7372 7373 7373 7373 7171 7171 7171 7270 7171 7071 7171 7170 6f6f 6f6e 6e6e 6d6e 6e6e 6c6d 6d6c 6d6c 6c6d 6c6c 6c6c 6c6c 6b6a 6b6b 6969 6969 6968 6867 6867 6767 6667 6766 6665 6565 6564 6464 6362 6262 6362 6362 6262 6261 6160 6060 6060 605f 605f 605f 5f5f 5f5d 5d5d 5d5d 5d5e 5d5d 5c5c 5d5c 5c5c 5c5b 5b5b 5b5b 5b5a 5c5c 5b5b 5a5a 5b5a 5b5a 5a59 595a 5a5a 5a5a 5b5a 5a59 5a5a 5a5a 5a5a 595a 5959 5a5a 5a59 5b5a 5a5a 595a 5a5a 5a5c 5b5b 5b5b 5b5b 5b5b 5b5b 5c5b 5c5b 5c5c 5c5c 5c5d 5c5d 5e5e 5e5d 5e5d 5d5e 5d5f 5e5f 5f5f 6061 6161 6061 6161 6261 6162 6363 6464 6565 6464 6465 6566 6766 6666 6666 6867 6868 6a69 6a69 6a69 696a 6a6b 6b6c 6d6c 6c6d 6e6e 6e6f 6f6f 7070 7070 7171 7171 7273 7372 7375 7475 7576 7677 7677 7778 7979 7979 7a79 7a79 7a7b 7b7b 7c7d 7e7e 7f7f 7f80 8182 8182 8383 8383 8384 8384 8586 8687 8888 8989 8a8b 8b8c 8c8c 8d8d 8e8e 8f8f 8f90 9190 9192 9294 9494 9697 9698 9798 999a 9a9b 9c9b 9b9c 9d9c 9d9d 9ea0 a1a1 a2a2 a3a3 a3a5 a4a6 a6a7 a7a7 a7a8 a9a9 a9aa a9ab abac acac aeae aeaf afaf afb0 b1b1 b3b2 b2b2 b3b2 b3b3 b3b5 b4b5 b5b5 b6b6 b7b7 b7b7 b7b8 b8b8 b8b9 b9b9 b9b8 bab9 bab9 baba babb bbbb bbbb bcbb bbbb bbba bbbb babc babb bbbb baba baba bbbb babb bbba babb babb baba baba bab9 b9b8 b8b9 b8b8 b7b7 b7b7 b7b7 b7b6 b5b5 b4b4 b4b4 b4b3 b3b3 b3b2 b2b2 b2b1 b2b1 b0af afb0 aeaf aeae adad adac acac abab aaa9 a9a7 a7a6 a7a6 a5a5 a4a5 a5a4 a4a4 a3a2 a2a1 a0a0 a09f 9f9f 9e9d 9d9c 9c9b 9b9b 9a9a 9a99 9998 9897 9796 9795 9594 9394 9392 9291 908f 8f90 8f8f 8f8e 8e8d 8d8e 8d8c 8b8b 8a8a 8a89 898a 8888 8887 8687 8785 8585 8485 8483 8383 8282 8282 8282 8281 8081 7f7f 7f7f 7f7f 7f7f 7e7d 7d7d 7d7d 7d7d 7c7d 7c7c 7b7b 7a7a 797a 7a7a 7b79 7979 7979 7978 7979 7a79 7878 7878 7778 7878 7777 7777 7676 7777 7776 7777 7877 7677 7776 7776 7676 7676 7676 7676 7575 7676 7676 7676 7676 7675 7574 7475 7576 7575 7475 7476 7575 7575 7574 7473 7474 7474 7575 7474 7474 7474 7474 7473 7474 7375 7474 7474 7474 7473 7373 7473 7272 7273 7272 7271 7172 7272 7272 7271 7272 7171 7271 7171 7171 7170 7170 6f70 6f70 706f 7070 6f70 706f 7071 7170 706f 7070 7070 6f6e 6e6f 6e6e 6e6d 6e6f 6e6d 6e6e 6e6e 6e6e 6e6e 6e6e 6c6c 6c6c 6d6c 6d6d 6c6c 6d6d 6d6d 6d6e 6d6c 6d6c 6d6d 6c6d 6d6d 6d6e 6d6d 6c6d 6d6d 6d6d 6d6d 6d6d 6d6d 6d6c 6d6d 6d6c 6e6c 6c6c 6d6c 6d6c 6c6d 6d6d 6d6d 6e6d 6e6d 6e6e 6e6e 6d6d 6d6d 6e6d 6d6d 6d6d 6d6d 6d6e 6e6f 6e6e 6e6e 6f6f 6f6f 6f6e 6f6f 6e6f 6f6e 6f6f 6f6f 6f6e 6f70 6f70 6f6f 6f6f 6e6f 6f6f 706f 6f6f 6f6f 6e6e 6e6f 6f6f 706f 6e6e 6f6f 6d6e 6e6e 6e6f 6e6f 6f6f 6e6e 6f6e 6f6e 6e6e 6f6f 6f6e 6e6e 6d6d 6d6d 6d6c 6e6d 6e6d 6d6e 6d6d 6d6d 6f6d 6e6e 6d6d 6d6d 6d6d 6d6d 6d6d 6c6c 6c6c 6c6c 6c6d 6d6c 6c6c 6d6c 6c6c 6d6c 6d6c 6c6c 6b6b 6b6a 6b6b 6b6b 6b6b 6a6b 6b6b 6a6b 6a6a 6a6a 6969 6a69 6968 6868 6868 6968 6968 6868 6868 6869 6868 6968 6767 6767 6768 6767 6867 6867 6867 6767 6768 6869 6969 6868 6868 6868 6868 6868 6868 6869 6969 696a 696a 6a6a 6b6c 6a6c 6b6c 6b6b 6c6d 6d6c 6c6d 6d6d 6e6f 6e6e 6f6f 6f70 7070 7071 7272 7172 7372 7273 7273 7374 7576 7576 7677 7778 7878 7879 797a 7a7a 7a7a 7a7b 7c7d 7e7e 7e7f 7f80 8080 8281 8282 8283 8384 8485 8586 8687 8887 8888 8889 8b8b 8c8c 8d8d 8e8e 8e8f 8f8f 9091 9192 9294 9394 9595 9696 9797 9897 989a 9999 999a 9a9c 9b9c 9c9e 9e9e 9ea0 a0a1 a1a1 a2a3 a3a3 a4a4 a5a4 a4a5 a6a5 a6a6 a7a7 a8a9 a9aa abab abaa abab aaac abac adac acad adae afaf b0b0 afaf b0b0 b0b0 b1b1 b0b1 b1b1 b2b1 b3b2 b4b3 b3b3 b4b4 b4b3 b4b4 b4b4 b3b4 b3b4 b4b3 b4b4 b4b4 b3b4 b4b5 b5b5 b4b5 b5b5 b5b4 b5b5 b4b3 b3b4 b4b3 b3b3 b3b3 b2b3 b1b2 b2b1 b2b1 b1b2 b0b0 b0b0 b0b1 b0af afb0 afae aeae aead aead acac adac acac abac aaaa aaa9 a8a9 a8a8 a8a7 a7a7 a7a7 a7a6 a6a6 a5a5 a5a4 a4a2 a3a3 a2a3 a2a1 a2a0 a09f 9fa0 9f9e 9e9d 9d9d 9d9d 9c9c 9b9c 9a9b 9a9b 9a99 9999 9898 9798 9897 9797 9696 9595 9595 9493 9493 9493 9392 9192 9191 9091 9190 9090 8f8f 908f 8f8e 8e8e 8d8e 8d8d 8c8c 8c8c 8b8b 8c8c 8b8b 8b8a 8b89 8988 8a89 8988 8888 8787 8786 8786 8685 8685 8585 8484 8484 8384 8383 8382 8382 8282 8281 8382 8281 8180 7f80 807e 7f7f 7e7e 7e7e 7d7e 7d7d 7d7c 7c7d 7c7b 7b7b 7b7c 7c7b 7a7a 797a 7979 7979 7878 7878 7778 7777 7777 7576 7574 7475 7574 7473 7472 7272 7272 7172 7271 7170 7070 6f6f 6f6e 6e6e 6e6f 6e6d 6d6c 6d6c 6b6b 6b6a 6b6a 6a6a 6a6a 6969 6868 6768 6767 6766 6565 6566 6565 6565 6564 6463 6464 6363 6162 6161 6060 6161 6060 6060 6060 605f 5f5e 5d5f 5f5e 5e5e 5d5d 5d5d 5d5c 5c5c 5c5c 5c5c 5b5c 5b5b 5a5a 5b5b 5b5a 5a59 5959 5a5a 595a 5959 5959 595a 5959 5a59 5a59 5858 5759 5959 5859 5959 5858 5959 5959 5858 5859 5858 5758 5859 5959 5959 595a 5a5a 5a5a 5a5a 5a5a 5a5b 5a5a 5a5a 5a59 5a5a 5a5a 5b5a 5b5b 5b5b 5b5c 5c5c 5c5d 5c5c 5d5c 5c5d 5c5c 5d5d 5d5e 5d5e 5d5d 5e5e 5e5e 5e5e 5f60 6060 5f60 605f 6060 6161 6160 6161 6262 6161 6262 6261 6363 6362 6364 6364 6463 6364 6464 6565 6465 6465 6667 6667 6766 6767 6767 6768 6768 6868 6868 6869 6a6b 6a6a 6b6a 6b6c 6d6c 6d6d 6c6d 6c6d 6d6e 6e6e 6e6d 6e6e 6e70 6f6f 6f70 7072 7172 7272 7172 7272 7272 7274 7474 7374 7475 7575 7576 7677 7677 7778 7878 7978 7979 7a7a 7a7a 7b7a 7b7b 7b7c 7c7c 7c7d 7d7d 7e7e 7f7f 7f80 8080 8181 8181 8182 8382 8383 8483 8484 8585 8585 8686 8787 8687 8887 8888 8989 898a 8a8a 8b8b 8c8c 8c8d 8e8e 8f8f 8f90 8f8f 8f91 9091 9091 9292 9294 9493 9495 9696 9696 9697 9797 9897 9899 9999 9a9a 9a9b 9b9c 9b9c 9c9c 9c9e 9e9f 9e9f 9f9f 9fa0 a0a0 a1a1 a2a2 a3a2 a2a3 a3a3 a4a4 a4a4 a5a4 a6a5 a6a6 a7a7 a8a7 a8a8 a9a9 a8a9 a9a9 aaaa aaaa acab acac acac adac acad adae adae aeae b0af afb0 afaf afb0 b0b0 b1b0 b1b1 b1b1 b1b1 b2b1 b1b2 b2b2 b3b2 b2b2 b3b3 b4b4 b4b4 b4b4 b4b3 b3b3 b3b3 b4b3 b3b3 b3b3 b3b3 b3b4 b4b4 b5b4 b4b4 b4b3 b4b3 b3b3 b3b3 b3b3 b3b2 b3b2 b2b2 b2b1 b1b1 b2b1 b1b1 b0b0 aeaf afae afae afae aeae adae adad adad acaa abab aba9 a9aa aaaa a9a8 a8a8 a7a7 a6a6 a6a6 a5a5 a4a5 a5a4 a3a3 a2a3 a2a2 a1a1 a19f 9f9f a09f 9e9e 9d9d 9d9d 9c9b 9b9b 9a9a 9998 9897 9797 9797 9595 9595 9393 9393 9292 9191 9090 9090 8f8f 8e8d 8d8d 8d8b 8b8b 8a8a 8a89 8989 8887 8787 8686 8585 8584 8383 8382 8182 8180 8080 7f7f 7f7e 7e7d 7d7d 7d7c 7c7c 7c7b 7b7a 7a79 7978 7777 7777 7675 7675 7575 7474 7474 7473 7373 7371 7171 7070 7070 6f70 6f70 6e6e 6e6e 6d6c 6d6c 6c6d 6c6b 6b6b 6a6a 6a69 6969 6a69 6968 6868 6868 6767 6667 6567 6665 6565 6465 6464 6464 6464 6464 6363 6263 6263 6362 6362 6161 6161 6060 6061 6061 5f60 605f 605f 5f5e 5f5e 5f5e 5e5e 5f5e 5e5e 5e5e 5d5d 5d5e 5d5d 5e5d 5d5d 5c5c 5c5c 5d5d 5d5c 5c5c 5d5c 5b5c 5c5c 5c5c 5c5c 5c5b 5c5c 5b5c 5c5c 5c5b 5c5b 5b5b 5b5b 5c5b 5b5b 5b5b 5c5b 5c5b 5b5b 5b5b 5c5b 5b5c 5c5b 5c5d 5c5c 5c5c 5c5c 5c5d 5d5d 5c5d 5d5c 5d5c 5d5e 5d5e 5d5e 5e5e 5d5e 5e5e 5e5f 5f5f 5f5f 5f5e 5f60 6061 6061 6061 6161 6061 6262 6263 6363 6463 6363 6364 6464 6565 6565 6666 6666 6666 6667 6767 6767 6868 6869 6868 6a69 696a 6a69 6a6b
+
+@console-vis 01
+@count [ &i 0000 &c 0000 &r 0000 &n 0000 ] 
+@note [ &val 3c30 3235 ]
+@tempo 00c0
+@bit-check 8000
+@beat-check 00
+
+@pitch-length 01
+@pitches 3034 0000 0000 0000 0000 0000 0000 0000
+@rhythms 8080 8080 0000 0000 0000 0000 0000 0000
+@repeat-sample 00
+@text1-length 0000
+@text1 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000
+
+
+@font ( terminus01x02 )
+	0000 0000 0000 0000 0000 0000 0000 0000
+	0000 183c 3c3c 1818 1800 1818 0000 0000
+	0066 6666 2400 0000 0000 0000 0000 0000
+	0000 006c 6cfe 6c6c 6cfe 6c6c 0000 0000
+	1818 7cc6 c2c0 7c06 0686 c67c 1818 0000
+	0000 0000 c2c6 0c18 3060 c686 0000 0000
+	0000 386c 6c38 76dc cccc cc76 0000 0000
+	0030 3030 6000 0000 0000 0000 0000 0000
+	0000 0c18 3030 3030 3030 180c 0000 0000
+	0000 3018 0c0c 0c0c 0c0c 1830 0000 0000
+	0000 0000 0066 3cff 3c66 0000 0000 0000
+	0000 0000 0018 187e 1818 0000 0000 0000
+	0000 0000 0000 0000 0018 1818 3000 0000
+	0000 0000 0000 00fe 0000 0000 0000 0000
+	0000 0000 0000 0000 0000 1818 0000 0000
+	0000 0000 0206 0c18 3060 c080 0000 0000
+	0000 386c c6c6 d6d6 c6c6 6c38 0000 0000
+	0000 1838 7818 1818 1818 187e 0000 0000
+	0000 7cc6 060c 1830 60c0 c6fe 0000 0000
+	0000 7cc6 0606 3c06 0606 c67c 0000 0000
+	0000 0c1c 3c6c ccfe 0c0c 0c1e 0000 0000
+	0000 fec0 c0c0 fc06 0606 c67c 0000 0000
+	0000 3860 c0c0 fcc6 c6c6 c67c 0000 0000
+	0000 fec6 0606 0c18 3030 3030 0000 0000
+	0000 7cc6 c6c6 7cc6 c6c6 c67c 0000 0000
+	0000 7cc6 c6c6 7e06 0606 0c78 0000 0000
+	0000 0000 1818 0000 0018 1800 0000 0000
+	0000 0000 1818 0000 0018 1830 0000 0000
+	0000 0006 0c18 3060 3018 0c06 0000 0000
+	0000 0000 007e 0000 7e00 0000 0000 0000
+	0000 0060 3018 0c06 0c18 3060 0000 0000
+	0000 7cc6 c60c 1818 1800 1818 0000 0000
+	0000 007c c6c6 dede dedc c07c 0000 0000
+	0000 1038 6cc6 c6fe c6c6 c6c6 0000 0000
+	0000 fc66 6666 7c66 6666 66fc 0000 0000
+	0000 3c66 c2c0 c0c0 c0c2 663c 0000 0000
+	0000 f86c 6666 6666 6666 6cf8 0000 0000
+	0000 fe66 6268 7868 6062 66fe 0000 0000
+	0000 fe66 6268 7868 6060 60f0 0000 0000
+	0000 3c66 c2c0 c0de c6c6 663a 0000 0000
+	0000 c6c6 c6c6 fec6 c6c6 c6c6 0000 0000
+	0000 3c18 1818 1818 1818 183c 0000 0000
+	0000 1e0c 0c0c 0c0c cccc cc78 0000 0000
+	0000 e666 666c 7878 6c66 66e6 0000 0000
+	0000 f060 6060 6060 6062 66fe 0000 0000
+	0000 c6ee fefe d6c6 c6c6 c6c6 0000 0000
+	0000 c6e6 f6fe dece c6c6 c6c6 0000 0000
+	0000 7cc6 c6c6 c6c6 c6c6 c67c 0000 0000
+	0000 fc66 6666 7c60 6060 60f0 0000 0000
+	0000 7cc6 c6c6 c6c6 c6d6 de7c 0c0e 0000
+	0000 fc66 6666 7c6c 6666 66e6 0000 0000
+	0000 7cc6 c660 380c 06c6 c67c 0000 0000
+	0000 7e7e 5a18 1818 1818 183c 0000 0000
+	0000 c6c6 c6c6 c6c6 c6c6 c67c 0000 0000
+	0000 c6c6 c6c6 c6c6 c66c 3810 0000 0000
+	0000 c6c6 c6c6 d6d6 d6fe ee6c 0000 0000
+	0000 c6c6 6c7c 3838 7c6c c6c6 0000 0000
+	0000 6666 6666 3c18 1818 183c 0000 0000
+	0000 fec6 860c 1830 60c2 c6fe 0000 0000
+	0000 3c30 3030 3030 3030 303c 0000 0000
+	0000 0080 c0e0 7038 1c0e 0602 0000 0000
+	0000 3c0c 0c0c 0c0c 0c0c 0c3c 0000 0000
+	1038 6cc6 0000 0000 0000 0000 0000 0000
+	0000 0000 0000 0000 0000 0000 00ff 0000
+	3030 1800 0000 0000 0000 0000 0000 0000
+	0000 0000 0078 0c7c cccc cc76 0000 0000
+	0000 e060 6078 6c66 6666 667c 0000 0000
+	0000 0000 007c c6c0 c0c0 c67c 0000 0000
+	0000 1c0c 0c3c 6ccc cccc cc76 0000 0000
+	0000 0000 007c c6fe c0c0 c67c 0000 0000
+	0000 386c 6460 f060 6060 60f0 0000 0000
+	0000 0000 0076 cccc cccc cc7c 0ccc 7800
+	0000 e060 606c 7666 6666 66e6 0000 0000
+	0000 1818 0038 1818 1818 183c 0000 0000
+	0000 0606 000e 0606 0606 0606 6666 3c00
+	0000 e060 6066 6c78 786c 66e6 0000 0000
+	0000 3818 1818 1818 1818 183c 0000 0000
+	0000 0000 00ec fed6 d6d6 d6c6 0000 0000
+	0000 0000 00dc 6666 6666 6666 0000 0000
+	0000 0000 007c c6c6 c6c6 c67c 0000 0000
+	0000 0000 00dc 6666 6666 667c 6060 f000
+	0000 0000 0076 cccc cccc cc7c 0c0c 1e00
+	0000 0000 00dc 7666 6060 60f0 0000 0000
+	0000 0000 007c c660 380c c67c 0000 0000
+	0000 1030 30fc 3030 3030 361c 0000 0000
+	0000 0000 00cc cccc cccc cc76 0000 0000
+	0000 0000 0066 6666 6666 3c18 0000 0000
+	0000 0000 00c6 c6d6 d6d6 fe6c 0000 0000
+	0000 0000 00c6 6c38 3838 6cc6 0000 0000
+	0000 0000 00c6 c6c6 c6c6 c67e 060c f800
+	0000 0000 00fe cc18 3060 c6fe 0000 0000
+	0000 0e18 1818 7018 1818 180e 0000 0000
+	0000 1818 1818 0018 1818 1818 0000 0000
+	0000 7018 1818 0e18 1818 1870 0000 0000
+
+@end-memory
+
+@text-input 
+
+
